@@ -1,0 +1,57 @@
+name: Deploy to Melanic Lab
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: melanic-lab-demo-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Trigger Coolify deployment
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Deploy latest commit
+        shell: bash
+        env:
+          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request GET "$COOLIFY_WEBHOOK" \
+              --header "Authorization: Bearer $COOLIFY_TOKEN" \
+              --header "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              --header "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"
+          )"
+
+          cat "$response_file"
+          rm -f "$response_file"
+
+          echo
+          echo "HTTP status: $http_code"
+
+          if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+            echo "Coolify deployment request failed."
+            exit 1
+          fi
+
+          echo "Coolify deployment was triggered successfully."
